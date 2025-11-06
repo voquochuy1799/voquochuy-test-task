@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Pytest
+.pytest_cache/
+report.xml
+allure-results/
+allure-report/
+
+# VSCode
+.vscode/
+
+# OS
+Thumbs.db
+*.log
