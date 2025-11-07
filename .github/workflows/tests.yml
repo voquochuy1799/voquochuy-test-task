@@ -18,6 +18,7 @@ jobs:
       TAGS: smoke
       TO_EMAIL: ${{ secrets.NOTIFY_EMAIL_TO }}
       SMTP_USER: ${{ secrets.MAIL_USERNAME }}
+      
       SMTP_PASS: ${{ secrets.MAIL_PASSWORD }}
     steps:
       - name: Checkout
@@ -91,8 +92,21 @@ jobs:
           echo "Run URL: $RUN_URL" >> $GITHUB_STEP_SUMMARY
           echo "Artifacts: allure-results, allure-report" >> $GITHUB_STEP_SUMMARY
 
-      - name: Send email via SMTP App Password (fallback)
-        if: ${{ always() && env.SMTP_USER != '' && env.SMTP_PASS != '' && env.TO_EMAIL != '' }}
+      - name: Email config check
+        if: always()
+        run: |
+          echo "## Email Config Check" >> $GITHUB_STEP_SUMMARY
+          echo "SMTP_USER set: $([[ -n \"${SMTP_USER}\" ]] && echo 'yes' || echo 'no')" >> $GITHUB_STEP_SUMMARY
+          echo "SMTP_PASS set: $([[ -n \"${SMTP_PASS}\" ]] && echo 'yes' || echo 'no')" >> $GITHUB_STEP_SUMMARY
+          echo "TO_EMAIL set:  $([[ -n \"${TO_EMAIL}\" ]] && echo 'yes' || echo 'no')" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+              echo "Note: This is a PR from a fork. GitHub does not expose secrets to forked PRs, so email will be skipped." >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+      - name: Send email via SMTP App Password
+        if: ${{ always() && env.SMTP_USER != '' && env.SMTP_PASS != '' && env.TO_EMAIL != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com

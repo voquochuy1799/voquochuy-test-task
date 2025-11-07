@@ -8,7 +8,6 @@ import allure
 
 from src.utils.api_assertions import (
     assert_status,
-    assert_in_statuses,
     assert_json_field_equals,
     assert_json_has_keys,
 )
@@ -93,19 +92,20 @@ def test_delete_pet_happy(api_client):
         if resp2.status_code == 404:
             break
         time.sleep(0.5)
-    assert_in_statuses(resp2, [404, 400])
+    # After deletion the expected status is 404 (not found). Some flaky gateways may return 400 briefly, but we require strict 404 now.
+    assert_status(resp2, 404, "Deleted pet should return 404 on get")
 
 
 @allure.feature("Petstore API")
 @pytest.mark.api
 def test_get_pet_not_found(api_client):
     resp = api_client.get("/pet/0")
-    assert_in_statuses(resp, [404, 400])
+    assert_status(resp, 404, "Non-existent pet should return 404")
 
 
 @allure.feature("Petstore API")
 @pytest.mark.api
 def test_create_pet_invalid_body(api_client):
-    # Send wrong content-type to provoke error
+    # Send wrong content-type to provoke error; primary expected code is 400 (bad request)
     resp = api_client.session.post(api_client._url("/pet"), data="invalid", headers={"Content-Type": "text/plain"})
-    assert_in_statuses(resp, [400, 405, 415, 500])
+    assert_status(resp, 415, "Invalid body should return 415")
