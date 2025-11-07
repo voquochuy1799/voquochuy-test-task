@@ -90,28 +90,8 @@ jobs:
           echo "Run URL: $RUN_URL" >> $GITHUB_STEP_SUMMARY
           echo "Artifacts: allure-results, allure-report" >> $GITHUB_STEP_SUMMARY
 
-      - name: Send email via SendGrid (API)
-        if: ${{ always() && env.SG_KEY != '' && env.SG_FROM != '' && env.TO_EMAIL != '' }}
-        uses: fjogeleit/http-request-action@v1
-        with:
-          url: https://api.sendgrid.com/v3/mail/send
-          method: POST
-          customHeaders: >
-            {"Content-Type": "application/json", "Authorization": "Bearer ${{ env.SG_KEY }}"}
-          data: |
-            {
-              "personalizations": [
-                {"to": [{"email": "${{ env.TO_EMAIL }}"}]}
-              ],
-              "from": {"email": "${{ env.SG_FROM }}", "name": "CI Bot"},
-              "subject": "CI Test Run ${{ github.run_id }} - ${{ job.status }}",
-              "content": [
-                {"type": "text/html", "value": "<h3>CI Test Run for ${{ github.repository }}</h3><p><b>Status:</b> ${{ job.status }}</p><table border=1 cellspacing=0 cellpadding=6><tr><th>Environment</th><th>Browser</th><th>Total</th><th>Passed</th><th>Failures</th><th>Errors</th><th>Skipped</th><th>Pass rate</th></tr><tr><td>${{ matrix.env }}</td><td>${{ matrix.browser }}</td><td>${{ steps.summary.outputs.tests }}</td><td>${{ steps.summary.outputs.passed }}</td><td>${{ steps.summary.outputs.failures }}</td><td>${{ steps.summary.outputs.errors }}</td><td>${{ steps.summary.outputs.skipped }}</td><td>${{ steps.summary.outputs.passrate }}%</td></tr></table><p>Run URL: <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">Open in GitHub</a></p><p>Artifacts: allure-results, allure-report</p>"}
-              ]
-            }
-
       - name: Send email via SMTP App Password (fallback)
-        if: ${{ always() && env.SG_KEY == '' && env.SMTP_USER != '' && env.SMTP_PASS != '' && env.TO_EMAIL != '' }}
+        if: ${{ always() && env.SMTP_USER != '' && env.SMTP_PASS != '' && env.TO_EMAIL != '' }}
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com

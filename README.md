@@ -69,16 +69,13 @@ allure serve allure-results
 
 ## Notifications
 
-You have two options to receive CI emails:
+SMTP with an App Password (e.g., Gmail) is used to send CI email summaries.
 
-1. SendGrid (API key — no mailbox password needed)
+Secrets required:
 
-- Secrets required:
-  - `SENDGRID_API_KEY` — SendGrid API key with Mail Send permission
-  - `MAIL_FROM` — Verified sender email in SendGrid
-  - `NOTIFY_EMAIL_TO` — Recipient email
-
-2. SMTP with App Password (e.g., Gmail)
+- `MAIL_USERNAME` — your mailbox address (e.g., yourname@gmail.com)
+- `MAIL_PASSWORD` — the App Password generated for your mailbox
+- `NOTIFY_EMAIL_TO` — Recipient email
 
 - Secrets required:
   - `MAIL_USERNAME` — your mailbox address (e.g., yourname@gmail.com)
@@ -94,11 +91,9 @@ How to generate an App Password (Gmail example):
 
 Notes:
 
-- The workflow tries SendGrid first (if its secrets are set). If not, it will use the SMTP/App Password step when `MAIL_USERNAME`, `MAIL_PASSWORD`, and `NOTIFY_EMAIL_TO` are present.
 - SMTP defaults to Gmail’s server (smtp.gmail.com:465). If you need Outlook/Yahoo/iCloud, update the workflow step accordingly.
 - Email contains: totals (tests/passed/failures/errors/skipped), pass rate, environment, browser, run URL, and artifacts info.
-
-Microsoft Teams notification has been removed. You can re-add it later by restoring the step in `.github/workflows/tests.yml` if needed.
+- Microsoft Teams notification has been removed. You can re-add it later by restoring the step in `.github/workflows/tests.yml` if needed.
 
 ## Notes
 
@@ -117,7 +112,7 @@ Environment variables:
 
 ## Pipelines
 
-GitHub Actions workflow `.github/workflows/tests.yml` runs on push and PR, defaults to `qa` env, runs smoke tests, parallel `-n 6`, retries up to 3 times, and uploads Allure results as artifacts. If email secrets are set it sends an HTML summary via SendGrid.
+GitHub Actions workflow `.github/workflows/tests.yml` runs on push and PR, defaults to `qa` env, runs smoke tests in parallel with retries, and uploads Allure results as artifacts. If SMTP email secrets are set it sends an HTML summary.
 
 ## Debugging with Python Test Explorer (VS Code)
 
