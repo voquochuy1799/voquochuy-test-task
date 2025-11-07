@@ -39,6 +39,7 @@ jobs:
 
       - name: Parse JUnit summary
         id: summary
+        if: always()
         run: |
           python .github/scripts/parse_junit.py
 
