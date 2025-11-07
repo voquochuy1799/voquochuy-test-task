@@ -67,6 +67,10 @@ def create_driver(
         raise ValueError("Unsupported browser. Use 'chrome' or 'firefox'.")
 
     width, height = map(int, window_size.split(","))
+    # In CI, prefer headless by default unless explicitly disabled
+    ci_mode = os.environ.get("CI", "").lower() == "true"
+    env_headless_flag = os.environ.get("HEADLESS", "").lower() in ("1", "true", "yes")
+    effective_headless = headless or ci_mode or env_headless_flag
 
     if browser == "chrome":
         options = ChromeOptions()
@@ -74,7 +78,7 @@ def create_driver(
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        if headless:
+        if effective_headless:
             options.add_argument("--headless=new")
         chrome_binary = _find_browser_binary("chrome")
         portable_driver_path = None
@@ -121,7 +125,7 @@ def create_driver(
         driver.set_window_size(width, height)
     else:
         options = FirefoxOptions()
-        if headless:
+        if effective_headless:
             options.add_argument("-headless")
         firefox_binary = _find_browser_binary("firefox")
         if firefox_binary:
@@ -130,17 +134,38 @@ def create_driver(
             # Prefer Selenium Manager to resolve geckodriver automatically
             driver = webdriver.Firefox(options=options)
         except Exception as e:
-            # Fallback to webdriver-manager
-            try:
-                driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()), options=options)
-            except Exception:
-                msg = (
-                    "Failed to start Firefox. Ensure Firefox is installed or set FIREFOX_BINARY to the executable path.\n"
-                    f"Tried binary: {firefox_binary or 'not found'}\n"
-                    "Alternatively run with --browser chrome if Chrome is installed.\n"
-                    f"Original error: {e}"
-                )
-                raise RuntimeError(msg) from e
+            # If not already headless, retry once with headless explicitly enabled
+            if not effective_headless:
+                try:
+                    options_retry = FirefoxOptions()
+                    options_retry.add_argument("-headless")
+                    if firefox_binary:
+                        options_retry.binary = firefox_binary
+                    driver = webdriver.Firefox(options=options_retry)
+                except Exception:
+                    # Fallback to webdriver-manager
+                    try:
+                        driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()), options=options_retry)
+                    except Exception:
+                        msg = (
+                            "Failed to start Firefox. Ensure Firefox is installed or set FIREFOX_BINARY to the executable path.\n"
+                            f"Tried binary: {firefox_binary or 'not found'}\n"
+                            "Alternatively run with --browser chrome if Chrome is installed.\n"
+                            f"Original error: {e}"
+                        )
+                        raise RuntimeError(msg) from e
+            else:
+                # Fallback to webdriver-manager when already headless
+                try:
+                    driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()), options=options)
+                except Exception:
+                    msg = (
+                        "Failed to start Firefox. Ensure Firefox is installed or set FIREFOX_BINARY to the executable path.\n"
+                        f"Tried binary: {firefox_binary or 'not found'}\n"
+                        "Alternatively run with --browser chrome if Chrome is installed.\n"
+                        f"Original error: {e}"
+                    )
+                    raise RuntimeError(msg) from e
         driver.set_window_size(width, height)
 
     return driver

@@ -33,9 +33,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run tests (headless browsers)
         run: |
-          pytest -m "${{ env.TAGS }}" -n 6 --reruns 3 --reruns-delay 2 --alluredir=allure-results --junitxml=report.xml
+          pytest -m "${{ env.TAGS }}" -n 6 --reruns 3 --reruns-delay 2 --headless --alluredir=allure-results --junitxml=report.xml
 
       - name: Parse JUnit summary
         id: summary

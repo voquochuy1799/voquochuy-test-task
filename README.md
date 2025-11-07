@@ -112,7 +112,7 @@ Environment variables:
 
 ## Pipelines
 
-GitHub Actions workflow `.github/workflows/tests.yml` runs on push and PR, defaults to `qa` env, runs smoke tests in parallel with retries, and uploads Allure results as artifacts. If SMTP email secrets are set it sends an HTML summary.
+GitHub Actions workflow `.github/workflows/tests.yml` runs on push and PR, defaults to `qa` env, runs smoke tests in parallel with retries, and uploads Allure results as artifacts. If SMTP email secrets are set it sends an HTML summary. Browsers run headless in CI by default.
 
 ## Debugging with Python Test Explorer (VS Code)
 
