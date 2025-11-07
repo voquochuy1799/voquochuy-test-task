@@ -42,13 +42,25 @@ jobs:
         run: |
           python .github/scripts/parse_junit.py
 
-      - name: Generate Allure report
-        uses: simple-elf/allure-report-action@v1.8
+      - name: Set up Java for Allure
         if: always()
+        uses: actions/setup-java@v4
         with:
-          allure_results: allure-results
-          gh_pages: false
-          allure_report: allure-report
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install Allure CLI
+        if: always()
+        run: |
+          curl -sL https://github.com/allure-framework/allure2/releases/download/2.27.0/allure-2.27.0.tgz -o allure.tgz
+          tar -xzf allure.tgz
+          echo "$PWD/allure-2.27.0/bin" >> $GITHUB_PATH
+
+      - name: Generate Allure report
+        if: always()
+        run: |
+          allure --version
+          allure generate allure-results -o allure-report --clean || echo "No Allure results or generation failed"
 
       - name: Upload Allure results
         uses: actions/upload-artifact@v4
