@@ -37,33 +37,7 @@ jobs:
       - name: Parse JUnit summary
         id: summary
         run: |
-          python - << 'PY'
-          import xml.etree.ElementTree as ET
-          p = 'report.xml'
-          tree = ET.parse(p)
-          root = tree.getroot()
-          # Handle <testsuite> or <testsuites>
-          if root.tag == 'testsuite':
-              ts = root
-              tests = int(ts.attrib.get('tests', 0))
-              failures = int(ts.attrib.get('failures', 0))
-              errors = int(ts.attrib.get('errors', 0))
-              skipped = int(ts.attrib.get('skipped', 0))
-          else:
-              tests = failures = errors = skipped = 0
-              for ts in root.findall('testsuite'):
-                  tests += int(ts.attrib.get('tests', 0))
-                  failures += int(ts.attrib.get('failures', 0))
-                  errors += int(ts.attrib.get('errors', 0))
-                  skipped += int(ts.attrib.get('skipped', 0))
-          passed = tests - failures - errors - skipped
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"tests={tests}\n")
-              f.write(f"passed={passed}\n")
-              f.write(f"failures={failures}\n")
-              f.write(f"errors={errors}\n")
-              f.write(f"skipped={skipped}\n")
-          PY
+          python .github/scripts/parse_junit.py
 
       - name: Generate Allure report
         uses: simple-elf/allure-report-action@v1.8
@@ -97,40 +71,12 @@ jobs:
           echo "Browser: ${{ matrix.browser }}" >> $GITHUB_STEP_SUMMARY
           echo "Passed: ${{ steps.summary.outputs.passed }} / Total: ${{ steps.summary.outputs.tests }}" >> $GITHUB_STEP_SUMMARY
           echo "Failures: ${{ steps.summary.outputs.failures }}, Errors: ${{ steps.summary.outputs.errors }}, Skipped: ${{ steps.summary.outputs.skipped }}" >> $GITHUB_STEP_SUMMARY
+          echo "Pass rate: ${{ steps.summary.outputs.passrate }}%" >> $GITHUB_STEP_SUMMARY
           echo "Run URL: $RUN_URL" >> $GITHUB_STEP_SUMMARY
           echo "Artifacts: allure-results, allure-report" >> $GITHUB_STEP_SUMMARY
 
-      - name: Notify Teams (optional)
-        if: ${{ always() && secrets.TEAMS_WEBHOOK_URL != '' }}
-        uses: fjogeleit/http-request-action@v1
-        with:
-          url: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          method: "POST"
-          customHeaders: '{"Content-Type": "application/json"}'
-          data: |
-            {
-              "@type": "MessageCard",
-              "@context": "https://schema.org/extensions",
-              "summary": "Test Run Summary",
-              "themeColor": "0076D7",
-              "title": "CI Test Run - ${{ github.workflow }}",
-              "sections": [
-                {"facts": [
-                  {"name": "Repo", "value": "${{ github.repository }}"},
-                  {"name": "Env", "value": "${{ matrix.env }}"},
-                  {"name": "Browser", "value": "${{ matrix.browser }}"},
-                  {"name": "Run", "value": "${{ github.run_id }}"},
-                  {"name": "Passed", "value": "${{ steps.summary.outputs.passed }} / ${{ steps.summary.outputs.tests }}"},
-                  {"name": "Failures", "value": "${{ steps.summary.outputs.failures }}"},
-                  {"name": "Errors", "value": "${{ steps.summary.outputs.errors }}"},
-                  {"name": "Skipped", "value": "${{ steps.summary.outputs.skipped }}"}
-                ],
-                "text": "Allure results and static report uploaded as artifacts. View run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
-              ]
-            }
-
-      - name: Send mail (optional)
-        if: ${{ always() && secrets.NOTIFY_EMAIL_TO != '' }}
+      - name: Send email via SMTP App Password (fallback)
+        if: ${{ always() && secrets.SENDGRID_API_KEY == '' && secrets.MAIL_USERNAME != '' && secrets.MAIL_PASSWORD != '' && secrets.NOTIFY_EMAIL_TO != '' }}
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -141,12 +87,21 @@ jobs:
           to: ${{ secrets.NOTIFY_EMAIL_TO }}
           from: CI Bot <${{ secrets.MAIL_USERNAME }}>
           secure: true
-          body: |
-            CI run for ${{ github.repository }}
-            Environment: ${{ matrix.env }}
-            Browser: ${{ matrix.browser }}
-            Status: ${{ job.status }}
-            Passed: ${{ steps.summary.outputs.passed }} / ${{ steps.summary.outputs.tests }}
-            Failures: ${{ steps.summary.outputs.failures }}, Errors: ${{ steps.summary.outputs.errors }}, Skipped: ${{ steps.summary.outputs.skipped }}
-            Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            Artifacts: allure-results, allure-report
+          html_body: |
+            <h3>CI Test Run for ${{ github.repository }}</h3>
+            <p><b>Status:</b> ${{ job.status }}</p>
+            <table border="1" cellspacing="0" cellpadding="6">
+              <tr><th>Environment</th><th>Browser</th><th>Total</th><th>Passed</th><th>Failures</th><th>Errors</th><th>Skipped</th><th>Pass rate</th></tr>
+              <tr>
+                <td>${{ matrix.env }}</td>
+                <td>${{ matrix.browser }}</td>
+                <td>${{ steps.summary.outputs.tests }}</td>
+                <td>${{ steps.summary.outputs.passed }}</td>
+                <td>${{ steps.summary.outputs.failures }}</td>
+                <td>${{ steps.summary.outputs.errors }}</td>
+                <td>${{ steps.summary.outputs.skipped }}</td>
+                <td>${{ steps.summary.outputs.passrate }}%</td>
+              </tr>
+            </table>
+            <p>Run URL: <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Open in GitHub</a></p>
+            <p>Artifacts: allure-results, allure-report</p>

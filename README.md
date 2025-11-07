@@ -69,21 +69,55 @@ allure serve allure-results
 
 ## Notifications
 
-CI supports posting a summary to Microsoft Teams and/or email. Configure secrets in your repository:
+You have two options to receive CI emails:
 
-- `TEAMS_WEBHOOK_URL` — Incoming webhook URL
-- `NOTIFY_EMAIL_TO` — Email address to notify (requires Actions runner to support sending mail or a custom action)
+1. SendGrid (API key — no mailbox password needed)
+
+- Secrets required:
+  - `SENDGRID_API_KEY` — SendGrid API key with Mail Send permission
+  - `MAIL_FROM` — Verified sender email in SendGrid
+  - `NOTIFY_EMAIL_TO` — Recipient email
+
+2. SMTP with App Password (e.g., Gmail)
+
+- Secrets required:
+  - `MAIL_USERNAME` — your mailbox address (e.g., yourname@gmail.com)
+  - `MAIL_PASSWORD` — the App Password generated for your mailbox
+  - `NOTIFY_EMAIL_TO` — Recipient email
+
+How to generate an App Password (Gmail example):
+
+- Turn on 2‑Step Verification at https://myaccount.google.com/security
+- After 2FA is enabled, open “App passwords” on the same page
+- Create a new app password (you can name it like “GitHub Actions CI”)
+- Copy the 16‑character password (without spaces) into the `MAIL_PASSWORD` secret
+
+Notes:
+
+- The workflow tries SendGrid first (if its secrets are set). If not, it will use the SMTP/App Password step when `MAIL_USERNAME`, `MAIL_PASSWORD`, and `NOTIFY_EMAIL_TO` are present.
+- SMTP defaults to Gmail’s server (smtp.gmail.com:465). If you need Outlook/Yahoo/iCloud, update the workflow step accordingly.
+- Email contains: totals (tests/passed/failures/errors/skipped), pass rate, environment, browser, run URL, and artifacts info.
+
+Microsoft Teams notification has been removed. You can re-add it later by restoring the step in `.github/workflows/tests.yml` if needed.
 
 ## Notes
 
 - The driver is managed automatically via webdriver-manager/Selenium Manager. The browser window is sized to 1920x1080.
 - On UI failures, a screenshot is attached to the Allure report.
 - An auth token placeholder is included for UI/API collaboration; set `API_TOKEN` env var if required.
-- If your system doesn't have Chrome/Firefox on PATH, set `CHROME_BINARY` or `FIREFOX_BINARY` to the browser executable path. You can also run headless via `--headless`.
+- If your system doesn't have Chrome/Firefox installed:
+  - Chrome: the framework auto-downloads a portable "Chrome for Testing" to `.browsers/` and uses it.
+  - Firefox: install Firefox or set `FIREFOX_BINARY` to the executable path.
+  - You can also run headless via `--headless`.
+
+Environment variables:
+
+- `CHROME_BINARY` — absolute path to a Chrome executable (overrides auto-detection and auto-download).
+- `FIREFOX_BINARY` — absolute path to a Firefox executable.
 
 ## Pipelines
 
-GitHub Actions workflow `.github/workflows/tests.yml` runs on push and PR, defaults to `qa` env, runs smoke tests, parallel `-n 6`, retries up to 3 times, and uploads Allure results as an artifact. It posts an optional Teams message with pass/fail counts and a link to the artifact.
+GitHub Actions workflow `.github/workflows/tests.yml` runs on push and PR, defaults to `qa` env, runs smoke tests, parallel `-n 6`, retries up to 3 times, and uploads Allure results as artifacts. If email secrets are set it sends an HTML summary via SendGrid.
 
 ## Debugging with Python Test Explorer (VS Code)
 

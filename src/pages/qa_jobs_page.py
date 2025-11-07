@@ -53,44 +53,45 @@ class QAJobsPage(BasePage):
             # Some dropdowns may not use a search input; continue
             pass
 
-    def filter_by_department(self, department: str):
-        if not self._wait_select2_results_generic("select2-filter-by-department-results"):
-            # Fallback: wait for jobs counter stability to assume filters loaded then reopen
-            self.wait_jobs_counter_stable()
-            self._open_select_dropdown(self.FILTER_DEPT_ARROW)
-            self._wait_select2_results_generic("select2-filter-by-department-results")
-        self._open_select_dropdown(self.FILTER_DEPT_ARROW)
-        self._scroll_results_into_view("select2-filter-by-department-results")
-        # Then click desired option
-        option_xpath_exact = f"//ul[@id='select2-filter-by-department-results']/li[contains(@class,'select2-results__option') and normalize-space()='{department}']"
-        option_xpath_contains = f"//ul[@id='select2-filter-by-department-results']/li[contains(@class,'select2-results__option') and contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '{department.lower()}')]"
-        try:
-            el = WebDriverWait(self.driver, self.timeout).until(EC.element_to_be_clickable((By.XPATH, option_xpath_exact)))
-            self.driver.execute_script("arguments[0].scrollIntoView({block:'nearest'});", el)
-            el.click()
-        except TimeoutException:
-            el = WebDriverWait(self.driver, self.timeout).until(EC.element_to_be_clickable((By.XPATH, option_xpath_contains)))
-            self.driver.execute_script("arguments[0].scrollIntoView({block:'nearest'});", el)
-            el.click()
+    def filter_by_department(self, department: str, max_wait: int = 300, interval: int = 3):
+        """Pure user-action approach: keep clicking dropdown arrow until >1 options show, then pick match.
+        Extended wait: up to 5 minutes (300s) retrying every 3s.
+        No URL/query param tricks, no counter polling.
+        """
+        print(f"[dept] START collecting options (pure retry, max {max_wait}s)")
+        opts = self._retry_collect_options(
+            self.FILTER_DEPT_ARROW,
+            prefix="select2-filter-by-department",
+            max_wait=max_wait,
+            interval=interval,
+        )
+        print(f"[dept] options collected: {[t for _, t in opts]}")
+        chosen = self._choose_best_match(department, opts)
+        if not chosen:
+            raise TimeoutException(f"[dept] No matching option for '{department}' in {[t for _, t in opts]}")
+        el = chosen[0]
+        self.driver.execute_script("arguments[0].scrollIntoView({block:'nearest'});", el)
+        el.click()
+        print(f"[dept] clicked '{chosen[1]}'")
 
-    def filter_by_location(self, location: str):
-        if not self._wait_select2_results_generic("select2-filter-by-location-results"):
-            self.wait_jobs_counter_stable()
-            self._open_select_dropdown(self.FILTER_LOC_ARROW)
-            self._wait_select2_results_generic("select2-filter-by-location-results")
-        self._open_select_dropdown(self.FILTER_LOC_ARROW)
-        self._scroll_results_into_view("select2-filter-by-location-results")
-        # Then click desired option
-        option_xpath_exact = f"//ul[@id='select2-filter-by-location-results']/li[contains(@class,'select2-results__option') and normalize-space()='{location}']"
-        option_xpath_contains = f"//ul[@id='select2-filter-by-location-results']/li[contains(@class,'select2-results__option') and contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), '{location.lower()}')]"
-        try:
-            el = WebDriverWait(self.driver, self.timeout).until(EC.element_to_be_clickable((By.XPATH, option_xpath_exact)))
-            self.driver.execute_script("arguments[0].scrollIntoView({block:'nearest'});", el)
-            el.click()
-        except TimeoutException:
-            el = WebDriverWait(self.driver, self.timeout).until(EC.element_to_be_clickable((By.XPATH, option_xpath_contains)))
-            self.driver.execute_script("arguments[0].scrollIntoView({block:'nearest'});", el)
-            el.click()
+    def filter_by_location(self, location: str, max_wait: int = 300, interval: int = 3):
+        """Pure user-action approach for location dropdown (same pattern as department)."""
+        print(f"[loc] START collecting options (pure retry, max {max_wait}s)")
+        opts = self._retry_collect_options(
+            self.FILTER_LOC_ARROW,
+            prefix="select2-filter-by-location",
+            max_wait=max_wait,
+            interval=interval,
+        )
+        print(f"[loc] options collected: {[t for _, t in opts]}")
+        chosen = self._choose_best_match(location, opts)
+        if not chosen:
+            raise TimeoutException(f"[loc] No matching option for '{location}' in {[t for _, t in opts]}")
+        el = chosen[0]
+        self.driver.execute_script("arguments[0].scrollIntoView({block:'nearest'});", el)
+        el.click()
+        print(f"[loc] clicked '{chosen[1]}'")
+        self._debug_dump_cards(limit=5)
 
     def get_job_cards(self):
         return self.wait_all_present(self.JOB_LIST)
@@ -150,6 +151,7 @@ class QAJobsPage(BasePage):
 
     def assert_jobs_match(self, position_contains: str, dept_contains: str, loc_contains: str) -> list[str]:
         errors: List[str] = []
+        self.wait_jobs_counter_stable()
         cards = self.get_job_cards()
         for idx, card in enumerate(cards, start=1):
             pos = card.find_element(*self.JOB_POS).text
@@ -180,3 +182,88 @@ class QAJobsPage(BasePage):
         new = list(after - before)
         if new:
             self.driver.switch_to.window(new[0])
+
+    # -------------------- New helper methods for robust Select2 interaction -------------------- #
+
+    # Removed _select2_pick_option; simplified retry logic implemented in _retry_collect_options + _choose_best_match
+
+    def _retry_collect_options(self, arrow_locator, prefix: str, max_wait: int, interval: int):
+        """Retry clicking dropdown arrow until more than one option is visible or timeout reached."""
+        deadline = time.time() + max_wait
+        attempt = 0
+        last_seen = []
+        while time.time() < deadline:
+            attempt += 1
+            try:
+                self._open_select_dropdown(arrow_locator)
+            except Exception:
+                pass
+            opts = self._collect_select2_options(results_ul_id_prefix=prefix)
+            texts = [t for _, t in opts]
+            print(f"[select2] attempt {attempt} options: {texts}")
+            last_seen = texts
+            if len(opts) > 1:
+                return opts
+            time.sleep(interval)
+        raise TimeoutException(f"[select2] Timeout after {max_wait}s; last seen options: {last_seen}")
+
+    def _debug_dump_cards(self, limit: int = 5):
+        try:
+            cards = self.get_job_cards()
+            print(f"[cards] total: {len(cards)}")
+            for i, c in enumerate(cards[:limit], start=1):
+                try:
+                    pos = c.find_element(*self.JOB_POS).text
+                except Exception:
+                    pos = ""
+                try:
+                    dept = c.find_element(*self.JOB_DEPT).text
+                except Exception:
+                    dept = ""
+                try:
+                    loc = c.find_element(*self.JOB_LOC).text
+                except Exception:
+                    loc = ""
+                print(f"[cards] {i}: pos='{pos}' dept='{dept}' loc='{loc}'")
+        except Exception as e:
+            print(f"[cards] dump failed: {e}")
+
+    # Removed URL/counter-based fallback helpers (_any_card_contains, _has_result_counter, _get_result_counter, _wait_param_and_counter)
+
+    def _collect_select2_options(self, results_ul_id_prefix: str):
+        # Find any ul whose id starts with prefix and ends with -results
+        uls = self.driver.find_elements(By.XPATH, f"//ul[starts-with(@id,'{results_ul_id_prefix}') and contains(@id,'-results')]")
+        for ul in uls:
+            if not ul.is_displayed():
+                continue
+            lis = ul.find_elements(By.CSS_SELECTOR, "li.select2-results__option:not(.select2-results__option--loading)")
+            collected = []
+            for li in lis:
+                txt = li.text.strip()
+                if txt:
+                    collected.append((li, txt))
+            if collected:
+                return collected
+        return []
+
+    def _choose_best_match(self, target: str, options: list[tuple]):
+        target_norm = target.lower().strip()
+        # exact
+        exact = [o for o in options if o[1].strip() == target]
+        if exact:
+            return exact[0]
+        # case-ins contains
+        ci_contains = [o for o in options if target_norm in o[1].lower()]
+        if ci_contains:
+            return ci_contains[0]
+        # fuzzy: ignore punctuation & spaces
+        import re
+        def norm(s: str):
+            return re.sub(r"[^a-z0-9]", "", s.lower())
+        tn = norm(target_norm)
+        fuzzy = [o for o in options if tn and tn in norm(o[1])]
+        if fuzzy:
+            return fuzzy[0]
+        return None
+
+    # Removed slug/diagnostic/query param fallback helpers (_slugify, _select2_diagnostics, _slug_variants, _query_param_filter)

@@ -13,6 +13,8 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 
+from .browser_downloader import ensure_chrome_for_testing, ensure_chromedriver_for_testing
+
 
 def _find_browser_binary(browser: str) -> Optional[str]:
     """Try to locate a browser binary on common paths if not provided.
@@ -75,16 +77,44 @@ def create_driver(
         if headless:
             options.add_argument("--headless=new")
         chrome_binary = _find_browser_binary("chrome")
-        if chrome_binary:
-            options.binary_location = chrome_binary
-        # Ensure driver is present and up-to-date, and use it explicitly
+        portable_driver_path = None
+        portable_mode = False
+        # Prefer local Chrome if found; otherwise download portable Chrome for Testing
         try:
-            driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+            if chrome_binary:
+                options.binary_location = chrome_binary
+                # Use Selenium Manager to resolve the correct chromedriver automatically
+                try:
+                    driver = webdriver.Chrome(options=options)
+                except Exception:
+                    # Fallback to webdriver-manager in case Selenium Manager is blocked
+                    driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)
+            else:
+                auto_bin = ensure_chrome_for_testing()
+                if auto_bin:
+                    chrome_binary = str(auto_bin)
+                    options.binary_location = chrome_binary
+                    portable_mode = True
+                    # Get matching chromedriver for that version
+                    try:
+                        version = auto_bin.parent.name
+                        portable_driver_path = ensure_chromedriver_for_testing(version)
+                    except Exception:
+                        portable_driver_path = None
+                # Start with portable driver if available
+                if portable_mode and portable_driver_path and os.path.exists(portable_driver_path):
+                    driver = webdriver.Chrome(service=ChromeService(portable_driver_path), options=options)
+                else:
+                    # As a last resort try Selenium Manager without explicit binary (may fail if no Chrome installed)
+                    driver = webdriver.Chrome(options=options)
         except Exception as e:
             msg = (
-                "Failed to start Chrome. Ensure Chrome is installed or set CHROME_BINARY to the executable path.\n"
-                f"Tried binary: {chrome_binary or 'not found'}\n"
-                "Alternatively run with --browser firefox if Firefox is installed.\n"
+                "Failed to start Chrome. Tried local install, Selenium Manager, and portable Chrome.\n"
+                f"Binary used: {chrome_binary or 'not found'}\n"
+                "Options: \n"
+                "  1) Install Google Chrome, or set CHROME_BINARY to the executable,\n"
+                "  2) Ensure network allows Selenium Manager to download drivers,\n"
+                "  3) Try --browser firefox if Firefox is available.\n"
                 f"Original error: {e}"
             )
             raise RuntimeError(msg) from e
@@ -96,17 +126,21 @@ def create_driver(
         firefox_binary = _find_browser_binary("firefox")
         if firefox_binary:
             options.binary = firefox_binary
-        # GeckoDriverManager ensures latest driver
         try:
-            driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()), options=options)
+            # Prefer Selenium Manager to resolve geckodriver automatically
+            driver = webdriver.Firefox(options=options)
         except Exception as e:
-            msg = (
-                "Failed to start Firefox. Ensure Firefox is installed or set FIREFOX_BINARY to the executable path.\n"
-                f"Tried binary: {firefox_binary or 'not found'}\n"
-                "Alternatively run with --browser chrome if Chrome is installed.\n"
-                f"Original error: {e}"
-            )
-            raise RuntimeError(msg) from e
+            # Fallback to webdriver-manager
+            try:
+                driver = webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()), options=options)
+            except Exception:
+                msg = (
+                    "Failed to start Firefox. Ensure Firefox is installed or set FIREFOX_BINARY to the executable path.\n"
+                    f"Tried binary: {firefox_binary or 'not found'}\n"
+                    "Alternatively run with --browser chrome if Chrome is installed.\n"
+                    f"Original error: {e}"
+                )
+                raise RuntimeError(msg) from e
         driver.set_window_size(width, height)
 
     return driver
