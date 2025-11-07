@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Mapping, Iterable
+from typing import Any, Iterable
 
 import pytest_check as check
 
@@ -32,6 +32,5 @@ def assert_json_field_equals(resp, field: str, expected: Any):
     check.equal(actual, expected, f"Field '{field}' mismatch. Expected {expected}, got {actual}. Body: {str(data)[:500]}")
 
 
-def assert_in_statuses(resp, allowed: Iterable[int]):
-    actual = getattr(resp, "status_code", None)
-    check.is_true(actual in allowed, f"Expected status in {list(allowed)}, got {actual}. Body: {getattr(resp, 'text', '')[:300]}")
+# Previously we allowed asserting membership in a list of acceptable status codes.
+# Simplified tests now require exact status codes, so the helper was removed for clarity.
